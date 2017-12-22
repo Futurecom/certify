@@ -419,7 +419,7 @@ namespace Certify.Management
         }
 
         /// <summary>
-        /// Creates or updates the htttps bindings associated with the dns names in the current
+        /// Creates or updates the https bindings associated with the dns names in the current
         /// request config, using the requested port/ips or autobinding
         /// </summary>
         /// <param name="requestConfig"></param>
@@ -556,6 +556,8 @@ namespace Certify.Management
             var store = new X509Store(StoreName.My, StoreLocation.LocalMachine);
             store.Open(OpenFlags.OpenExistingOnly | OpenFlags.ReadWrite);
 
+            bool hasExistingIPSpecificBinding = false;
+
             using (var iisManager = GetDefaultServerManager())
             {
                 if (GetIisVersion().Major < 8)
@@ -565,11 +567,32 @@ namespace Certify.Management
                     host = "";
                 }
 
+                try
+                {
+                    if (!String.IsNullOrEmpty(ipAddress))
+                    {
+                        var existingBindings = new Utils.CertificateBindingUtils().GetAllCertificateBindings(new System.Net.IPEndPoint(System.Net.IPAddress.Parse(ipAddress), sslPort));
+                        if (existingBindings.Any())
+                        {
+                            hasExistingIPSpecificBinding = true;
+                        }
+                    }
+                }
+                catch (Exception)
+                {
+                    // best efforts to query current state, failed this time
+                }
+
+                // convert ascii hsot to unicode if required
+                string internationalHost = host == "" ? "" : ToUnicodeString(host);
+
                 var siteToUpdate = iisManager.Sites.FirstOrDefault(s => s.Id == site.Id);
 
                 if (siteToUpdate != null)
                 {
-                    string internationalHost = host == "" ? "" : ToUnicodeString(host);
+                    // TODO: should we disallow binding to no hostname in certain conditions? Need to
+                    //       add a preview of binding changes and give warnings for problematic combinations
+
                     var existingBinding = (from b in siteToUpdate.Bindings where b.Host == internationalHost && b.Protocol == "https" select b).FirstOrDefault();
 
                     if (existingBinding != null)
@@ -611,6 +634,24 @@ namespace Certify.Management
 
                 iisManager.CommitChanges();
                 store.Close();
+
+                if (!hasExistingIPSpecificBinding && !String.IsNullOrEmpty(ipAddress) && useSNI && !String.IsNullOrEmpty(internationalHost))
+                {
+                    // after our update a new IP specific binding has been created, if this was
+                    // supposed to be SNI with hostname only we should delete it
+                    try
+                    {
+                        var existingBindings = new Utils.CertificateBindingUtils().GetAllCertificateBindings(new System.Net.IPEndPoint(System.Net.IPAddress.Parse(ipAddress), sslPort));
+                        if (existingBindings.Any())
+                        {
+                            //TODO: remove 'ghost' bindings
+                        }
+                    }
+                    catch (Exception)
+                    {
+                        //failed to query or remove binding
+                    }
+                }
 
                 return true;
             }

@@ -1,10 +1,9 @@
 ﻿using Certify.Management;
+using Certify.Utils;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Certify.Core.Tests
 {
@@ -131,6 +130,16 @@ namespace Certify.Core.Tests
             //get all sites excluding stopped sites
             sites = iisManager.GetPrimarySites(includeOnlyStartedSites: true);
             Assert.IsTrue(sites.Any());
+        }
+
+        [TestMethod]
+        public void TestQueryAllCertBindings()
+        {
+            //get all sites
+            var util = new CertificateBindingUtils();
+            util.GetAllCertificateBindings();
+
+            Assert.IsTrue(true);
         }
     }
 }
